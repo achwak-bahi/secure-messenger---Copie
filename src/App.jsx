@@ -8,7 +8,15 @@ import {
 import { generateRSAKeyPair, encryptMessage, decryptMessage } from './crypto/cryptoUtils'
 import { useSocket } from './hooks/useSocket'
 
-// ── UI helpers ───────────────────────────────────────────────────
+// ── auto-detect role from hostname ───────────────────────────
+// localhost  → alice
+// ngrok URL  → bob
+const detectRole = () =>
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'alice'
+    : 'bob'
+
+// ── UI helpers ───────────────────────────────────────────────
 const Chip = ({ color = 'gray', children }) => (
   <span className={`chip chip-${color}`}>{children}</span>
 )
@@ -117,77 +125,12 @@ const NetworkChannel = ({ aliceConnected, bobConnected, hasPacket, simulateAttac
   )
 }
 
-// ══ ROLE SELECTION SPLASH SCREEN ════════════════════════════════════
-const RoleSelector = ({ onSelect }) => (
-  <div className="min-h-screen flex items-center justify-center" style={{ position: 'relative', zIndex: 1 }}>
-    <div className="text-center space-y-10 px-6">
-      {/* Logo */}
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-20 h-20 rounded-3xl flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #0891b2, #7c3aed)', boxShadow: '0 0 40px rgba(0,212,255,0.4)' }}>
-          <Shield size={36} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-4xl font-black font-mono grad-cyan-violet tracking-tight">SECURE MESSENGER</h1>
-          <p className="text-slate-500 font-mono text-sm tracking-[0.2em] mt-2">END-TO-END ENCRYPTED · REAL WEBSOCKET</p>
-        </div>
-      </div>
-
-      {/* Role cards */}
-      <div>
-        <p className="text-slate-400 font-mono text-sm mb-6 tracking-widest">✱ SELECT YOUR ROLE</p>
-        <div className="flex flex-col sm:flex-row gap-5 justify-center">
-
-          {/* Alice */}
-          <button onClick={() => onSelect('alice')}
-            className="group relative w-64 rounded-2xl p-6 text-left transition-all duration-300 hover:scale-105"
-            style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.25)', boxShadow: '0 0 20px rgba(56,189,248,0.08)' }}
-            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 30px rgba(56,189,248,0.25)'}
-            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 20px rgba(56,189,248,0.08)'}>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-              style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.2), rgba(56,189,248,0.05))', border: '1px solid rgba(56,189,248,0.3)' }}>
-              <span className="text-2xl font-black font-mono text-sky-400">A</span>
-            </div>
-            <p className="text-xl font-black font-mono text-sky-400 mb-1">Alice</p>
-            <p className="text-xs text-slate-500 font-mono">Sender role — encrypts messages with Bob’s public key</p>
-            <div className="mt-4 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-              <span className="text-[10px] font-mono text-sky-600">CONNECT AS ALICE</span>
-            </div>
-          </button>
-
-          {/* Bob */}
-          <button onClick={() => onSelect('bob')}
-            className="group relative w-64 rounded-2xl p-6 text-left transition-all duration-300 hover:scale-105"
-            style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.25)', boxShadow: '0 0 20px rgba(139,92,246,0.08)' }}
-            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 30px rgba(139,92,246,0.25)'}
-            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 20px rgba(139,92,246,0.08)'}>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-              style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.05))', border: '1px solid rgba(139,92,246,0.3)' }}>
-              <span className="text-2xl font-black font-mono text-violet-400">B</span>
-            </div>
-            <p className="text-xl font-black font-mono text-violet-400 mb-1">Bob</p>
-            <p className="text-xs text-slate-500 font-mono">Receiver role — decrypts with his own private key</p>
-            <div className="mt-4 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-              <span className="text-[10px] font-mono text-violet-600">CONNECT AS BOB</span>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      <p className="text-[10px] text-slate-600 font-mono">
-        Both users open the same URL — each picks their own role
-      </p>
-    </div>
-  </div>
-)
-
 // ════════════════════════════════════════════════════════════
 // MAIN APP
 // ════════════════════════════════════════════════════════════
 export default function App() {
-  const [role, setRole] = useState(null)   // null = not chosen yet
+  // role is auto-detected from hostname, then can be toggled manually
+  const [role, setRole] = useState(detectRole)
   const isAlice   = role === 'alice'
   const roleLabel = isAlice ? 'Alice' : 'Bob'
   const chipColor = isAlice ? 'cyan' : 'violet'
@@ -208,11 +151,12 @@ export default function App() {
   const [showInspector,    setShowInspector]    = useState(false)
   const [msgCount,         setMsgCount]         = useState(0)
 
-  const socket = useSocket(role || 'alice')
+  const socket = useSocket(role)
 
+  // switch role + reset all state
   const handleRoleSwitch = () => {
     socket.disconnect()
-    setRole(null)   // back to splash screen
+    setRole(r => r === 'alice' ? 'bob' : 'alice')
     setMyKeys(null); setPartnerCryptoKey(null)
     setEncryptedPacket(null); setDecryptResult(null)
     setSteps([]); setMessage('')
@@ -272,16 +216,16 @@ export default function App() {
     setDecrypting(false)
   }
 
-  // ══ Show splash screen if no role chosen yet ══
-  if (!role) return <RoleSelector onSelect={setRole} />
-
   return (
     <div className="min-h-screen" style={{ position: 'relative', zIndex: 1 }}>
+
+      {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-white/[0.04] scanline-overlay"
         style={{ background: 'rgba(3,5,10,0.92)', backdropFilter: 'blur(24px)' }}>
         <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)' }} />
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Logo */}
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
@@ -296,19 +240,28 @@ export default function App() {
                 <p className="text-[11px] text-slate-500 font-mono tracking-[0.2em]">END-TO-END ENCRYPTED · REAL WEBSOCKET</p>
               </div>
             </div>
+
+            {/* Chips + Switch Role */}
             <div className="flex items-center gap-2 flex-wrap">
               <Chip color={chipColor}>👤 {roleLabel}</Chip>
               <Chip color="cyan">🔐 AES-256-GCM</Chip>
               <Chip color="violet">🔑 RSA-2048</Chip>
               <Chip color="green">🛡 SHA-256</Chip>
-              <button onClick={handleRoleSwitch}
+
+              {/* Toggle button — shows where you'll switch TO */}
+              <button
+                onClick={handleRoleSwitch}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl font-mono text-sm font-bold transition-all"
                 style={{
-                  background: 'rgba(30,45,74,0.4)',
-                  border: '1px solid rgba(100,116,139,0.3)',
-                  color: '#94a3b8',
-                }}>
-                🔄 Switch Role
+                  background: isAlice
+                    ? 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(139,92,246,0.05))'
+                    : 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(56,189,248,0.05))',
+                  border: isAlice ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(56,189,248,0.4)',
+                  color: isAlice ? '#a78bfa' : '#38bdf8',
+                  boxShadow: isAlice ? '0 0 12px rgba(139,92,246,0.2)' : '0 0 12px rgba(56,189,248,0.2)',
+                }}
+              >
+                {isAlice ? '🔄 Switch to Bob' : '🔄 Switch to Alice'}
               </button>
             </div>
           </div>
@@ -316,6 +269,8 @@ export default function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+
+        {/* KEY MANAGEMENT */}
         <GlassCard glow={myKeys ? 'glow-cyan' : ''} className="p-6">
           <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
             <div className="flex items-center gap-3">
@@ -334,6 +289,7 @@ export default function App() {
               {loadingKeys ? 'Generating…' : '⚙ Generate My Keys'}
             </button>
           </div>
+
           {myKeys ? (
             <div className="grid md:grid-cols-2 gap-4 anim-fade-in">
               <div className="rounded-xl p-4" style={{ background: 'rgba(0,255,136,0.04)', border: '1px solid rgba(0,255,136,0.15)' }}>
@@ -355,6 +311,7 @@ export default function App() {
                   {myKeys.publicKeyPEM}
                 </pre>
               </div>
+
               <div className="rounded-xl p-4" style={{ background: 'rgba(255,51,102,0.04)', border: '1px solid rgba(255,51,102,0.15)' }}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -391,6 +348,7 @@ export default function App() {
               <p className="text-slate-600 text-xs mt-1">Generate keys first, then connect</p>
             </div>
           )}
+
           <div className="mt-4 p-3 rounded-xl" style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.15)' }}>
             <p className="text-xs font-mono font-bold text-violet-400 flex items-center gap-2">
               {partnerCryptoKey
@@ -404,6 +362,7 @@ export default function App() {
           </div>
         </GlassCard>
 
+        {/* CONNECTION */}
         <GlassCard className="p-5">
           <div className="flex items-center gap-4 flex-wrap">
             <SocketBadge status={socket.status} partnerOnline={socket.partnerOnline} role={role} />
@@ -425,7 +384,10 @@ export default function App() {
           </div>
         </GlassCard>
 
+        {/* SEND / RECEIVE */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_160px_1fr] gap-5 items-start">
+
+          {/* SEND */}
           <GlassCard className="p-6">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -480,6 +442,7 @@ export default function App() {
             )}
           </GlassCard>
 
+          {/* CHANNEL */}
           <div className="flex flex-col items-center gap-3 pt-4 lg:pt-8">
             <span className="text-[9px] font-mono text-slate-500 tracking-[0.3em]">WS CHANNEL</span>
             <NetworkChannel aliceConnected={socket.connected} bobConnected={socket.partnerOnline}
@@ -496,6 +459,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* RECEIVE */}
           <GlassCard glow={decryptResult ? (decryptResult.integrityOk ? 'glow-green' : 'glow-red') : ''} className="p-6">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -584,6 +548,7 @@ export default function App() {
           </GlassCard>
         </div>
 
+        {/* PACKET INSPECTOR */}
         {encryptedPacket && (
           <GlassCard className="overflow-hidden">
             <button onClick={() => setShowInspector(p => !p)}
