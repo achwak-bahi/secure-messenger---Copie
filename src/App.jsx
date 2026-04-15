@@ -129,7 +129,6 @@ const NetworkChannel = ({ aliceConnected, bobConnected, hasPacket, simulateAttac
 // MAIN APP
 // ════════════════════════════════════════════════════════════
 export default function App() {
-  // role is auto-detected from hostname, then can be toggled manually
   const [role, setRole] = useState(detectRole)
   const isAlice   = role === 'alice'
   const roleLabel = isAlice ? 'Alice' : 'Bob'
@@ -149,11 +148,9 @@ export default function App() {
   const [decryptResult,    setDecryptResult]    = useState(null)
   const [decrypting,       setDecrypting]       = useState(false)
   const [showInspector,    setShowInspector]    = useState(false)
-  const [msgCount,         setMsgCount]         = useState(0)
 
   const socket = useSocket(role)
 
-  // switch role + reset all state
   const handleRoleSwitch = () => {
     socket.disconnect()
     setRole(r => r === 'alice' ? 'bob' : 'alice')
@@ -192,21 +189,23 @@ export default function App() {
 
   const handleConnect = () => socket.connect(myKeys?.publicKeyPEM)
 
+  // Alice encrypts with Bob's public key and sends
   const handleEncrypt = async () => {
     if (!message.trim() || !myKeys) return
     if (!socket.connected)  { alert('Connect to WebSocket first!'); return }
-    if (!partnerCryptoKey)  { alert('⏳ Waiting for partner\'s public key…'); return }
+    if (!partnerCryptoKey)  { alert('⏳ Waiting for Bob\'s public key…'); return }
     setEncrypting(true); setDecryptResult(null); setSteps([]); setEncryptedPacket(null)
     for (let i = 1; i <= 4; i++) { await new Promise(r => setTimeout(r, 500)); setSteps(prev => [...prev, i]) }
     try {
       const packet = await encryptMessage(message, partnerCryptoKey)
       const sent   = socket.sendPacket(packet)
-      if (sent) { setEncryptedPacket(packet); setMsgCount(p => p + 1) }
+      if (sent) setEncryptedPacket(packet)
       else alert('❌ Send failed — not connected!')
     } catch (e) { console.error(e) }
     setEncrypting(false)
   }
 
+  // Bob decrypts with his own private key
   const handleDecrypt = async () => {
     if (!encryptedPacket || !myKeys) return
     setDecrypting(true)
@@ -225,7 +224,6 @@ export default function App() {
         <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)' }} />
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            {/* Logo */}
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
@@ -240,17 +238,12 @@ export default function App() {
                 <p className="text-[11px] text-slate-500 font-mono tracking-[0.2em]">END-TO-END ENCRYPTED · REAL WEBSOCKET</p>
               </div>
             </div>
-
-            {/* Chips + Switch Role */}
             <div className="flex items-center gap-2 flex-wrap">
               <Chip color={chipColor}>👤 {roleLabel}</Chip>
               <Chip color="cyan">🔐 AES-256-GCM</Chip>
               <Chip color="violet">🔑 RSA-2048</Chip>
               <Chip color="green">🛡 SHA-256</Chip>
-
-              {/* Toggle button — shows where you'll switch TO */}
-              <button
-                onClick={handleRoleSwitch}
+              <button onClick={handleRoleSwitch}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl font-mono text-sm font-bold transition-all"
                 style={{
                   background: isAlice
@@ -258,9 +251,7 @@ export default function App() {
                     : 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(56,189,248,0.05))',
                   border: isAlice ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(56,189,248,0.4)',
                   color: isAlice ? '#a78bfa' : '#38bdf8',
-                  boxShadow: isAlice ? '0 0 12px rgba(139,92,246,0.2)' : '0 0 12px rgba(56,189,248,0.2)',
-                }}
-              >
+                }}>
                 {isAlice ? '🔄 Switch to Bob' : '🔄 Switch to Alice'}
               </button>
             </div>
@@ -311,7 +302,6 @@ export default function App() {
                   {myKeys.publicKeyPEM}
                 </pre>
               </div>
-
               <div className="rounded-xl p-4" style={{ background: 'rgba(255,51,102,0.04)', border: '1px solid rgba(255,51,102,0.15)' }}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -352,12 +342,16 @@ export default function App() {
           <div className="mt-4 p-3 rounded-xl" style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.15)' }}>
             <p className="text-xs font-mono font-bold text-violet-400 flex items-center gap-2">
               {partnerCryptoKey
-                ? <><CheckCircle size={13} className="text-emerald-400" /> Partner's public key received ✓ — ready to encrypt!</>
+                ? <><CheckCircle size={13} className="text-emerald-400" /> Partner's public key received ✓ — ready!</>
                 : <><AlertTriangle size={13} className="text-yellow-400" /> Waiting for partner's public key…</>
               }
             </p>
             <p className="text-[10px] text-slate-600 font-mono mt-1">
-              {partnerCryptoKey ? 'Messages will be encrypted with partner\'s public key' : 'Partner must generate keys & connect for key exchange'}
+              {partnerCryptoKey
+                ? isAlice ? 'Alice will encrypt messages with Bob\'s public key'
+                           : 'Bob will decrypt messages with his own private key'
+                : 'Partner must generate keys & connect for key exchange'
+              }
             </p>
           </div>
         </GlassCard>
@@ -384,10 +378,8 @@ export default function App() {
           </div>
         </GlassCard>
 
-        {/* SEND / RECEIVE */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_160px_1fr] gap-5 items-start">
-
-          {/* SEND */}
+        {/* ══ ALICE: SEND PANEL ══ */}
+        {isAlice && (
           <GlassCard className="p-6">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -396,32 +388,35 @@ export default function App() {
               </div>
               <div>
                 <h2 className="font-bold font-mono text-sky-400 text-sm">SEND MESSAGE</h2>
-                <p className="text-xs text-slate-500">Encrypted with partner's public key</p>
+                <p className="text-xs text-slate-500">Alice encrypts with Bob's public key</p>
               </div>
             </div>
+
             {socket.partnerOfflineAlert && (
               <div className="mb-3 p-3 rounded-xl" style={{ background: 'rgba(255,51,102,0.06)', border: '1px solid rgba(255,51,102,0.2)' }}>
-                <p className="text-xs font-mono text-red-400 flex items-center gap-2"><AlertTriangle size={11}/> Partner went offline — packet not delivered</p>
+                <p className="text-xs font-mono text-red-400 flex items-center gap-2"><AlertTriangle size={11}/> Bob went offline — packet not delivered</p>
               </div>
             )}
+
             <div className="neon-divider mb-4" />
             <label className="block text-[10px] font-mono text-slate-400 tracking-widest mb-2">✉ PLAINTEXT MESSAGE</label>
             <div className="relative">
               <textarea value={message} onChange={e => { setMessage(e.target.value); setCharCount(e.target.value.length) }}
-                placeholder="Type your secret message…" rows={4} className="cyber-input w-full rounded-xl px-4 py-3 resize-none" />
+                placeholder="Type your secret message to Bob…" rows={4} className="cyber-input w-full rounded-xl px-4 py-3 resize-none" />
               <span className="absolute bottom-3 right-3 text-[10px] font-mono text-slate-600">{charCount}</span>
             </div>
             <button onClick={handleEncrypt}
               disabled={!message.trim() || !myKeys || encrypting || !socket.connected || !partnerCryptoKey}
               className="btn-primary w-full flex items-center justify-center gap-2 py-3.5 rounded-xl mt-4 text-white font-mono text-sm font-bold">
               <Lock size={15} className={encrypting ? 'animate-pulse' : ''}/>
-              {encrypting ? 'Encrypting…' : '🔒 Encrypt & Send'}
+              {encrypting ? 'Encrypting…' : '🔒 Encrypt & Send to Bob'}
             </button>
             {!partnerCryptoKey && socket.connected && (
               <p className="mt-2 text-[11px] font-mono text-yellow-500/80 flex items-center gap-1.5">
-                <AlertTriangle size={11}/> Waiting for partner to generate & connect with keys
+                <AlertTriangle size={11}/> Waiting for Bob to generate & connect
               </p>
             )}
+
             {steps.length > 0 && (
               <div className="mt-5 anim-fade-in">
                 <p className="text-[10px] font-mono text-slate-500 tracking-widest mb-4 flex items-center gap-2">
@@ -429,7 +424,7 @@ export default function App() {
                 </p>
                 <EncStep n="1" label="AES-256 Session Key"     sub="Generated via CSPRNG"                  active={steps.includes(1) && !steps.includes(2)} done={steps.includes(2)} />
                 <EncStep n="2" label="AES-GCM Encryption"      sub="Message → Ciphertext + Auth Tag"       active={steps.includes(2) && !steps.includes(3)} done={steps.includes(3)} />
-                <EncStep n="3" label="RSA-OAEP Key Wrap"       sub="AES key encrypted w/ partner's pubkey" active={steps.includes(3) && !steps.includes(4)} done={steps.includes(4)} />
+                <EncStep n="3" label="RSA-OAEP Key Wrap"       sub="AES key encrypted w/ Bob's pubkey"     active={steps.includes(3) && !steps.includes(4)} done={steps.includes(4)} />
                 <EncStep n="4" label="SHA-256 + WebSocket Send" sub="Hash computed → Packet sent via WS"   last active={steps.includes(4) && !encryptedPacket} done={!!encryptedPacket} />
               </div>
             )}
@@ -437,29 +432,70 @@ export default function App() {
               <div className="mt-4 p-3.5 rounded-xl flex items-center gap-2.5 anim-fade-in"
                 style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)' }}>
                 <CheckCircle size={15} className="text-emerald-400 flex-shrink-0"/>
-                <p className="text-xs font-mono font-bold text-emerald-400">📡 Sent via WebSocket ✓</p>
+                <p className="text-xs font-mono font-bold text-emerald-400">📡 Sent to Bob via WebSocket ✓</p>
+              </div>
+            )}
+
+            {/* Network channel — Alice side */}
+            <div className="mt-6">
+              <NetworkChannel aliceConnected={socket.connected} bobConnected={socket.partnerOnline}
+                hasPacket={!!encryptedPacket} simulateAttack={simulateAttack} />
+              <div className="glass rounded-xl p-3 mt-2 flex items-center justify-between">
+                <p className="text-[9px] font-mono text-slate-500 tracking-widest">MITM SIMULATION</p>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => { setSimulateAttack(p => !p); setDecryptResult(null) }}
+                    className={`relative w-12 h-6 rounded-full transition-all duration-300 ${simulateAttack ? 'bg-red-500 shadow-[0_0_12px_rgba(255,51,102,0.5)]' : 'bg-[#1e2d4a]'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-300 ${simulateAttack ? 'translate-x-6' : ''}`}/>
+                  </button>
+                  <p className={`text-[9px] font-mono ${simulateAttack ? 'text-red-400' : 'text-slate-600'}`}>
+                    {simulateAttack ? '☠ ACTIVE' : '○ OFF'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Packet inspector */}
+            {encryptedPacket && (
+              <div className="mt-4 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(30,45,74,0.7)' }}>
+                <button onClick={() => setShowInspector(p => !p)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-white/[0.01] transition-colors group">
+                  <div className="flex items-center gap-3">
+                    <Radio size={13} className="text-cyan-400"/>
+                    <span className="font-mono text-xs font-bold text-slate-300 group-hover:text-cyan-400 transition-colors">PACKET INSPECTOR</span>
+                    <Chip color="cyan">4 fields</Chip>
+                  </div>
+                  {showInspector ? <ChevronUp size={14} className="text-slate-400"/> : <ChevronDown size={14} className="text-slate-400"/>}
+                </button>
+                {showInspector && (
+                  <div className="px-4 pb-4 grid md:grid-cols-2 gap-3">
+                    {[
+                      { label: '🔐 CIPHERTEXT',        sub: 'AES-256-GCM',            key: 'ciphertext',      color: '#00d4ff' },
+                      { label: '🗝 ENCRYPTED AES KEY', sub: 'RSA-OAEP Wrapped',       key: 'encryptedAesKey', color: '#a78bfa' },
+                      { label: '🎲 IV / NONCE',         sub: '96-bit Random',          key: 'iv',              color: '#fbbf24' },
+                      { label: '# SHA-256 HASH',        sub: 'Integrity Fingerprint', key: 'msgHash',         color: '#00ff88' },
+                    ].map(({ label, sub, key, color }) => (
+                      <div key={key} className="rounded-xl p-3" style={{ background: 'rgba(3,5,10,0.7)', border: '1px solid rgba(30,45,74,0.7)' }}>
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="text-[10px] font-mono font-bold" style={{ color }}>{label}</p>
+                            <p className="text-[9px] text-slate-600 mt-0.5">{sub}</p>
+                          </div>
+                          <CopyBtn text={encryptedPacket[key]}/>
+                        </div>
+                        <p className="font-mono text-[9px] break-all leading-loose" style={{ color: `${color}99` }}>
+                          {encryptedPacket[key].slice(0, 80)}…
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </GlassCard>
+        )}
 
-          {/* CHANNEL */}
-          <div className="flex flex-col items-center gap-3 pt-4 lg:pt-8">
-            <span className="text-[9px] font-mono text-slate-500 tracking-[0.3em]">WS CHANNEL</span>
-            <NetworkChannel aliceConnected={socket.connected} bobConnected={socket.partnerOnline}
-              hasPacket={!!encryptedPacket} simulateAttack={simulateAttack} />
-            <div className="glass rounded-xl p-3 w-full text-center">
-              <p className="text-[9px] font-mono text-slate-500 tracking-widest mb-2">MITM ATTACK</p>
-              <button onClick={() => { setSimulateAttack(p => !p); setDecryptResult(null) }}
-                className={`relative w-12 h-6 rounded-full transition-all duration-300 ${simulateAttack ? 'bg-red-500 shadow-[0_0_12px_rgba(255,51,102,0.5)]' : 'bg-[#1e2d4a]'}`}>
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-300 ${simulateAttack ? 'translate-x-6' : ''}`}/>
-              </button>
-              <p className={`text-[9px] font-mono mt-2 ${simulateAttack ? 'text-red-400' : 'text-slate-600'}`}>
-                {simulateAttack ? '☠ ACTIVE' : '○ OFF'}
-              </p>
-            </div>
-          </div>
-
-          {/* RECEIVE */}
+        {/* ══ BOB: RECEIVE & DECRYPT PANEL ══ */}
+        {!isAlice && (
           <GlassCard glow={decryptResult ? (decryptResult.integrityOk ? 'glow-green' : 'glow-red') : ''} className="p-6">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -468,25 +504,46 @@ export default function App() {
               </div>
               <div>
                 <h2 className="font-bold font-mono text-violet-400 text-sm">RECEIVE & DECRYPT</h2>
-                <p className="text-xs text-slate-500">Decrypted with your private key</p>
+                <p className="text-xs text-slate-500">Bob decrypts messages from Alice with his private key</p>
               </div>
             </div>
+
+            {/* Network channel — Bob side */}
+            <div className="mb-5">
+              <NetworkChannel aliceConnected={socket.partnerOnline} bobConnected={socket.connected}
+                hasPacket={!!encryptedPacket} simulateAttack={simulateAttack} />
+              <div className="glass rounded-xl p-3 mt-2 flex items-center justify-between">
+                <p className="text-[9px] font-mono text-slate-500 tracking-widest">MITM SIMULATION</p>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => { setSimulateAttack(p => !p); setDecryptResult(null) }}
+                    className={`relative w-12 h-6 rounded-full transition-all duration-300 ${simulateAttack ? 'bg-red-500 shadow-[0_0_12px_rgba(255,51,102,0.5)]' : 'bg-[#1e2d4a]'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-300 ${simulateAttack ? 'translate-x-6' : ''}`}/>
+                  </button>
+                  <p className={`text-[9px] font-mono ${simulateAttack ? 'text-red-400' : 'text-slate-600'}`}>
+                    {simulateAttack ? '☠ ACTIVE' : '○ OFF'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {socket.receivedPacket && !decryptResult && (
               <div className="mb-4 p-3 rounded-xl anim-fade-in"
                 style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)' }}>
                 <p className="text-xs font-mono font-bold text-violet-400 flex items-center gap-2">
-                  <Radio size={12} className="anim-pulse-glow"/> 📨 Packet received via WebSocket!
+                  <Radio size={12} className="anim-pulse-glow"/> 📨 Packet received from Alice!
                 </p>
                 <p className="text-[10px] text-violet-600 mt-1 font-mono">
                   Received at {new Date(socket.receivedPacket._receivedAt || Date.now()).toLocaleTimeString()}
                 </p>
               </div>
             )}
+
             {simulateAttack && (
               <div className="mb-4 p-3 rounded-xl" style={{ background: 'rgba(255,51,102,0.07)', border: '1px solid rgba(255,51,102,0.25)' }}>
                 <p className="text-xs font-mono font-bold text-red-400 flex items-center gap-2"><AlertTriangle size={13}/> ⚠ MITM ATTACK ACTIVE</p>
               </div>
             )}
+
             <div className="neon-divider mb-4" />
             <button onClick={handleDecrypt}
               disabled={!encryptedPacket || !myKeys || decrypting}
@@ -494,7 +551,16 @@ export default function App() {
               <Unlock size={15} className={decrypting ? 'animate-pulse' : ''}/>
               {decrypting ? 'Decrypting…' : '🔓 Decrypt & Verify'}
             </button>
-            {decryptResult ? (
+
+            {!encryptedPacket && (
+              <div className="rounded-xl border border-dashed border-[#1e2d4a] p-10 text-center">
+                <div className="anim-float inline-block mb-4"><Database size={44} className="text-slate-700 mx-auto"/></div>
+                <p className="text-slate-400 font-mono text-sm">Awaiting message from Alice</p>
+                <p className="text-slate-600 text-xs mt-1.5">Will arrive automatically via WebSocket</p>
+              </div>
+            )}
+
+            {decryptResult && (
               <div className="space-y-4 anim-fade-in">
                 <div className="rounded-xl p-4" style={{ background: 'rgba(3,5,10,0.7)', border: '1px solid rgba(30,45,74,0.8)' }}>
                   <p className="text-[9px] font-mono text-slate-500 tracking-widest mb-2">💬 DECRYPTED MESSAGE</p>
@@ -518,13 +584,13 @@ export default function App() {
                 <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(3,5,10,0.7)', border: '1px solid rgba(30,45,74,0.6)' }}>
                   <p className="text-[9px] font-mono text-slate-500 tracking-widest flex items-center gap-1.5"><Hash size={10}/> HASH COMPARISON</p>
                   <div>
-                    <p className="text-[9px] text-slate-600 font-mono mb-1.5">ORIGINAL (Sender SHA-256)</p>
+                    <p className="text-[9px] text-slate-600 font-mono mb-1.5">ORIGINAL (Alice SHA-256)</p>
                     <div className="p-2 rounded-lg" style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.1)' }}>
                       <HashDisplay hash={decryptResult.receivedHash} color="cyan"/>
                     </div>
                   </div>
                   <div>
-                    <p className={`text-[9px] font-mono mb-1.5 ${decryptResult.integrityOk ? 'text-slate-600' : 'text-red-600'}`}>COMPUTED (Receiver SHA-256)</p>
+                    <p className={`text-[9px] font-mono mb-1.5 ${decryptResult.integrityOk ? 'text-slate-600' : 'text-red-600'}`}>COMPUTED (Bob SHA-256)</p>
                     <div className="p-2 rounded-lg" style={{ background: decryptResult.integrityOk ? 'rgba(0,255,136,0.04)' : 'rgba(255,51,102,0.04)',
                       border: `1px solid ${decryptResult.integrityOk ? 'rgba(0,255,136,0.1)' : 'rgba(255,51,102,0.15)'}` }}>
                       <HashDisplay hash={decryptResult.computedHash} color={decryptResult.integrityOk ? 'emerald' : 'red'}/>
@@ -536,53 +602,6 @@ export default function App() {
                       {decryptResult.integrityOk ? '✓ IDENTICAL' : '✗ MISMATCH'}
                     </Chip>
                   </div>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-[#1e2d4a] p-10 text-center">
-                <div className="anim-float inline-block mb-4"><Database size={44} className="text-slate-700 mx-auto"/></div>
-                <p className="text-slate-400 font-mono text-sm">Awaiting encrypted packet</p>
-                <p className="text-slate-600 text-xs mt-1.5">Will arrive automatically via WebSocket</p>
-              </div>
-            )}
-          </GlassCard>
-        </div>
-
-        {/* PACKET INSPECTOR */}
-        {encryptedPacket && (
-          <GlassCard className="overflow-hidden">
-            <button onClick={() => setShowInspector(p => !p)}
-              className="w-full flex items-center justify-between p-6 hover:bg-white/[0.01] transition-colors group">
-              <div className="flex items-center gap-3">
-                <Radio size={14} className="text-cyan-400"/>
-                <span className="font-mono text-sm font-bold text-slate-300 group-hover:text-cyan-400 transition-colors">ENCRYPTED PACKET INSPECTOR</span>
-                <Chip color="gray">Base64</Chip><Chip color="cyan">4 fields</Chip>
-              </div>
-              {showInspector ? <ChevronUp size={16} className="text-slate-400"/> : <ChevronDown size={16} className="text-slate-400"/>}
-            </button>
-            {showInspector && (
-              <div className="px-6 pb-6">
-                <div className="neon-divider mb-5"/>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {[
-                    { label: '🔐 CIPHERTEXT',        sub: 'AES-256-GCM Encrypted',         key: 'ciphertext',      color: '#00d4ff' },
-                    { label: '🗝 ENCRYPTED AES KEY', sub: 'RSA-OAEP Wrapped Session Key', key: 'encryptedAesKey', color: '#a78bfa' },
-                    { label: '🎲 IV / NONCE',         sub: '96-bit Random',                key: 'iv',              color: '#fbbf24' },
-                    { label: '# SHA-256 HASH',        sub: 'Integrity Fingerprint',        key: 'msgHash',         color: '#00ff88' },
-                  ].map(({ label, sub, key, color }) => (
-                    <div key={key} className="rounded-xl p-4" style={{ background: 'rgba(3,5,10,0.7)', border: '1px solid rgba(30,45,74,0.7)' }}>
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="text-xs font-mono font-bold" style={{ color }}>{label}</p>
-                          <p className="text-[10px] text-slate-600 mt-0.5">{sub}</p>
-                        </div>
-                        <CopyBtn text={encryptedPacket[key]}/>
-                      </div>
-                      <p className="font-mono text-[10px] break-all leading-loose" style={{ color: `${color}99` }}>
-                        {encryptedPacket[key].slice(0, 120)}{encryptedPacket[key].length > 120 ? '…' : ''}
-                      </p>
-                    </div>
-                  ))}
                 </div>
               </div>
             )}
