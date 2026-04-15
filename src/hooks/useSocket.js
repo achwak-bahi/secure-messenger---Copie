@@ -15,6 +15,21 @@ export const useSocket = (role) => {
   const [partnerOfflineAlert, setPartnerOfflineAlert] = useState(false)
   const [partnerPublicKeyPEM, setPartnerPublicKeyPEM] = useState(null)
 
+  // ── when role changes: close old socket + reset ALL state ──
+  useEffect(() => {
+    if (wsRef.current) {
+      wsRef.current.onclose = null   // suppress the state update from old close
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    setStatus('disconnected')
+    setReceivedPacket(null)
+    setPartnerOnline(false)
+    setLastDelivered(null)
+    setPartnerOfflineAlert(false)
+    setPartnerPublicKeyPEM(null)
+  }, [role])
+
   const connect = useCallback((myPublicKeyPEM) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
     setStatus('connecting')
@@ -78,6 +93,7 @@ export const useSocket = (role) => {
 
   const clearPacket = useCallback(() => setReceivedPacket(null), [])
 
+  // cleanup on unmount
   useEffect(() => () => wsRef.current?.close(), [])
 
   return {
