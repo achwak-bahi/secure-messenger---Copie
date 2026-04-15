@@ -13,11 +13,10 @@ export const useSocket = (role) => {
   const [partnerOnline,       setPartnerOnline]       = useState(false)
   const [lastDelivered,       setLastDelivered]       = useState(null)
   const [partnerOfflineAlert, setPartnerOfflineAlert] = useState(false)
-  const [partnerPublicKey,    setPartnerPublicKey]    = useState(null) // ✨ مفتاح الشريك
+  const [partnerPublicKeyPEM, setPartnerPublicKeyPEM] = useState(null)
 
   const connect = useCallback((myPublicKeyPEM) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
-
     setStatus('connecting')
     const ws = new WebSocket(`${getWsUrl()}?role=${role}`)
     wsRef.current = ws
@@ -25,7 +24,6 @@ export const useSocket = (role) => {
     ws.onopen = () => {
       setStatus('connected')
       setPartnerOfflineAlert(false)
-      // أرسل مفتاحك العام فور الاتصال
       if (myPublicKeyPEM) {
         ws.send(JSON.stringify({ type: 'PUBLIC_KEY', key: myPublicKeyPEM }))
       }
@@ -53,11 +51,10 @@ export const useSocket = (role) => {
           case 'DELIVERED':
             setLastDelivered(msg.timestamp)
             break
-          case 'PARTNER_PUBLIC_KEY': // ✨ استقبل مفتاح الشريك
-            setPartnerPublicKey(msg.key)
+          case 'PARTNER_PUBLIC_KEY':
+            setPartnerPublicKeyPEM(msg.key)
             break
-          default:
-            break
+          default: break
         }
       } catch {}
     }
@@ -90,7 +87,7 @@ export const useSocket = (role) => {
     partnerOfflineAlert,
     lastDelivered,
     receivedPacket,
-    partnerPublicKey,
+    partnerPublicKeyPEM,
     connect,
     disconnect,
     sendPacket,
