@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-// ✨ Dynamic IP: uses the same host as the page, port 8080
-const WS_URL = `ws://${window.location.hostname}:8080`
+// ✨ Uses same host/port as the page (works with ngrok single tunnel)
+// WebSocket goes through Vite proxy at /ws path
+const getWsUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host  // includes port if any
+  return `${protocol}//${host}/ws`
+}
 
 export const useSocket = (role) => {
-  const wsRef               = useRef(null)
-  const [status,            setStatus]            = useState('disconnected')
-  const [receivedPacket,    setReceivedPacket]    = useState(null)
-  const [partnerOnline,     setPartnerOnline]     = useState(false)
-  const [lastDelivered,     setLastDelivered]     = useState(null)
+  const wsRef                 = useRef(null)
+  const [status,              setStatus]              = useState('disconnected')
+  const [receivedPacket,      setReceivedPacket]      = useState(null)
+  const [partnerOnline,       setPartnerOnline]       = useState(false)
+  const [lastDelivered,       setLastDelivered]       = useState(null)
   const [partnerOfflineAlert, setPartnerOfflineAlert] = useState(false)
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     setStatus('connecting')
-    const ws = new WebSocket(`${WS_URL}?role=${role}`)
+    const ws = new WebSocket(`${getWsUrl()}?role=${role}`)
     wsRef.current = ws
 
     ws.onopen  = () => { setStatus('connected'); setPartnerOfflineAlert(false) }
