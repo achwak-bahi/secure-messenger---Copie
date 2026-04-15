@@ -3,7 +3,7 @@ import {
   Shield, Lock, Unlock, Key, Send, AlertTriangle,
   CheckCircle, XCircle, Copy, RefreshCw, Eye, EyeOff,
   ChevronDown, ChevronUp, Hash, Wifi, WifiOff,
-  Cpu, Activity, Zap, Globe, Radio, Database, Signal, SignalZero
+  Zap, Globe, Radio, Database, Signal, SignalZero
 } from 'lucide-react'
 import { generateRSAKeyPair, encryptMessage, decryptMessage } from './crypto/cryptoUtils'
 import { useSocket } from './hooks/useSocket'
@@ -126,41 +126,54 @@ const NetworkChannel = ({ aliceConnected, bobConnected, hasPacket, simulateAttac
 // MAIN APP
 // ════════════════════════════════════════════════════════════
 export default function App() {
-  // ─── detect role from URL param ?role=alice or ?role=bob ─────
-  const urlRole = new URLSearchParams(window.location.search).get('role') || 'alice'
-  const isAlice = urlRole === 'alice'
-  const role    = urlRole
+  // ─── role state — toggled from UI ────────────────────────────
+  const [role, setRole] = useState('alice')
+  const isAlice  = role === 'alice'
+  const roleLabel = isAlice ? 'Alice' : 'Bob'
+  const chipColor = isAlice ? 'cyan' : 'violet'
 
   // ─── crypto state ─────────────────────────────────────────────
-  const [myKeys,          setMyKeys]          = useState(null)   // { publicKey, privateKey, publicKeyPEM }
-  const [loadingKeys,     setLoadingKeys]     = useState(false)
-  const [showPub,         setShowPub]         = useState(false)
-  const [showPriv,        setShowPriv]        = useState(false)
-  const [partnerCryptoKey, setPartnerCryptoKey] = useState(null) // CryptoKey object of partner
+  const [myKeys,           setMyKeys]           = useState(null)
+  const [loadingKeys,      setLoadingKeys]      = useState(false)
+  const [showPub,          setShowPub]          = useState(false)
+  const [showPriv,         setShowPriv]         = useState(false)
+  const [partnerCryptoKey, setPartnerCryptoKey] = useState(null)
 
-  const [message,         setMessage]         = useState('')
-  const [charCount,       setCharCount]       = useState(0)
-  const [encrypting,      setEncrypting]      = useState(false)
-  const [steps,           setSteps]           = useState([])
-  const [encryptedPacket, setEncryptedPacket] = useState(null)
-  const [simulateAttack,  setSimulateAttack]  = useState(false)
-  const [decryptResult,   setDecryptResult]   = useState(null)
-  const [decrypting,      setDecrypting]      = useState(false)
-  const [showInspector,   setShowInspector]   = useState(false)
-  const [msgCount,        setMsgCount]        = useState(0)
+  const [message,          setMessage]          = useState('')
+  const [charCount,        setCharCount]        = useState(0)
+  const [encrypting,       setEncrypting]       = useState(false)
+  const [steps,            setSteps]            = useState([])
+  const [encryptedPacket,  setEncryptedPacket]  = useState(null)
+  const [simulateAttack,   setSimulateAttack]   = useState(false)
+  const [decryptResult,    setDecryptResult]    = useState(null)
+  const [decrypting,       setDecrypting]       = useState(false)
+  const [showInspector,    setShowInspector]    = useState(false)
+  const [msgCount,         setMsgCount]         = useState(0)
 
   // ─── socket ────────────────────────────────────────────────────
   const socket = useSocket(role)
 
-  // ─── When we receive partner's public key PEM → import it ──────
+  // ─── reset everything when role changes ────────────────────────
+  const handleRoleSwitch = () => {
+    socket.disconnect()
+    setRole(r => r === 'alice' ? 'bob' : 'alice')
+    setMyKeys(null)
+    setPartnerCryptoKey(null)
+    setEncryptedPacket(null)
+    setDecryptResult(null)
+    setSteps([])
+    setMessage('')
+  }
+
+  // ─── import partner public key when received ───────────────────
   useEffect(() => {
     if (!socket.partnerPublicKeyPEM) return
     ;(async () => {
       try {
-        const pem   = socket.partnerPublicKeyPEM
-        const b64   = pem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '')
-        const der   = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
-        const key   = await crypto.subtle.importKey(
+        const pem = socket.partnerPublicKeyPEM
+        const b64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '')
+        const der = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+        const key = await crypto.subtle.importKey(
           'spki', der.buffer,
           { name: 'RSA-OAEP', hash: 'SHA-256' },
           true, ['encrypt']
@@ -170,7 +183,7 @@ export default function App() {
     })()
   }, [socket.partnerPublicKeyPEM])
 
-  // ─── When we receive a packet → store it for decryption ────────
+  // ─── store received packet ─────────────────────────────────────
   useEffect(() => {
     if (socket.receivedPacket) {
       setEncryptedPacket(socket.receivedPacket)
@@ -178,28 +191,24 @@ export default function App() {
     }
   }, [socket.receivedPacket])
 
-  // ─── Handlers ──────────────────────────────────────────────────
+  // ─── handlers ──────────────────────────────────────────────────
   const handleGenKeys = async () => {
     setLoadingKeys(true)
     setEncryptedPacket(null); setDecryptResult(null); setSteps([]); setPartnerCryptoKey(null)
     try {
       const kp = await generateRSAKeyPair()
       setMyKeys(kp)
-      // if already connected, share public key immediately
       if (socket.connected) socket.sendPublicKey(kp.publicKeyPEM)
     } catch (e) { console.error(e) }
     setLoadingKeys(false)
   }
 
-  const handleConnect = () => {
-    socket.connect(myKeys?.publicKeyPEM)
-  }
+  const handleConnect = () => socket.connect(myKeys?.publicKeyPEM)
 
-  // Alice encrypts with Bob's public key, Bob encrypts with Alice's
   const handleEncrypt = async () => {
     if (!message.trim() || !myKeys) return
-    if (!socket.connected) { alert('Connect to WebSocket first!'); return }
-    if (!partnerCryptoKey)  { alert('⏳ Waiting for partner\'s public key…\nMake sure both sides generated keys and connected.'); return }
+    if (!socket.connected)  { alert('Connect to WebSocket first!'); return }
+    if (!partnerCryptoKey)  { alert('⏳ Waiting for partner\'s public key…'); return }
 
     setEncrypting(true); setDecryptResult(null); setSteps([]); setEncryptedPacket(null)
     for (let i = 1; i <= 4; i++) {
@@ -215,7 +224,6 @@ export default function App() {
     setEncrypting(false)
   }
 
-  // Decrypt with MY private key
   const handleDecrypt = async () => {
     if (!encryptedPacket || !myKeys) return
     setDecrypting(true)
@@ -224,10 +232,6 @@ export default function App() {
     catch (e) { console.error(e) }
     setDecrypting(false)
   }
-
-  const accentColor = isAlice ? 'sky' : 'violet'
-  const roleLabel   = isAlice ? 'Alice' : 'Bob'
-  const chipColor   = isAlice ? 'cyan' : 'violet'
 
   return (
     <div className="min-h-screen" style={{ position: 'relative', zIndex: 1 }}>
@@ -238,6 +242,7 @@ export default function App() {
         <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, #00d4ff, #8b5cf6, transparent)' }} />
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Logo */}
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
@@ -252,19 +257,31 @@ export default function App() {
                 <p className="text-[11px] text-slate-500 font-mono tracking-[0.2em]">END-TO-END ENCRYPTED · REAL WEBSOCKET</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            {/* Chips + Toggle Role Button */}
+            <div className="flex items-center gap-2 flex-wrap">
               <Chip color={chipColor}>👤 {roleLabel}</Chip>
               <Chip color="cyan">🔐 AES-256-GCM</Chip>
               <Chip color="violet">🔑 RSA-2048</Chip>
               <Chip color="green">🛡 SHA-256</Chip>
+
+              {/* ── TOGGLE ROLE BUTTON ── */}
+              <button
+                onClick={handleRoleSwitch}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl font-mono text-sm font-bold transition-all"
+                style={{
+                  background: isAlice
+                    ? 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(139,92,246,0.05))'
+                    : 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(56,189,248,0.05))',
+                  border: isAlice ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(56,189,248,0.4)',
+                  color: isAlice ? '#a78bfa' : '#38bdf8',
+                  boxShadow: isAlice ? '0 0 12px rgba(139,92,246,0.2)' : '0 0 12px rgba(56,189,248,0.2)',
+                }}
+              >
+                {isAlice ? '🔄 Switch to Bob' : '🔄 Switch to Alice'}
+              </button>
             </div>
           </div>
-          <p className="text-[10px] text-slate-600 font-mono mt-2 flex items-center gap-1.5">
-            <Globe size={10} /> You are: <span className="text-yellow-400">{roleLabel}</span> ·
-            Switch role:
-            <a href="?role=alice" className="text-sky-400 hover:underline">Alice</a> /
-            <a href="?role=bob" className="text-violet-400 hover:underline">Bob</a>
-          </p>
         </div>
       </header>
 
