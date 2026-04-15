@@ -45,22 +45,29 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (data) => {
     try {
       const msg = JSON.parse(data.toString())
+      const partner = role === 'alice' ? 'bob' : 'alice'
+      const partnerWS = clients.get(partner)
 
       if (msg.type === 'PACKET') {
-        log(role, `📦 Packet received → relaying to ${partner}`)
-        const partnerWS = clients.get(partner)
+        log(role, `📦 Packet → ${partner}`)
         if (partnerWS?.readyState === 1) {
           partnerWS.send(JSON.stringify({
-            type: 'PACKET',
-            payload: msg.payload,
-            from: role,
-            timestamp: Date.now(),
+            type: 'PACKET', payload: msg.payload, from: role, timestamp: Date.now(),
           }))
-          log(partner, '📨 Packet delivered ✓')
+          log(partner, '📨 Delivered ✓')
           ws.send(JSON.stringify({ type: 'DELIVERED', timestamp: Date.now() }))
         } else {
-          log(role, `⚠ Partner (${partner}) is offline — packet dropped`)
+          log(role, `⚠ ${partner} offline`)
           ws.send(JSON.stringify({ type: 'PARTNER_OFFLINE' }))
+        }
+      }
+
+      // ✨ تمرير المفتاح العام للشريك
+      if (msg.type === 'PUBLIC_KEY') {
+        log(role, `🔑 Public key received → forwarding to ${partner}`)
+        if (partnerWS?.readyState === 1) {
+          partnerWS.send(JSON.stringify({ type: 'PARTNER_PUBLIC_KEY', key: msg.key, from: role }))
+          log(partner, '🔑 Partner public key delivered ✓')
         }
       }
 

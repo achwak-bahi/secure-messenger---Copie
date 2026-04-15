@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-// ✨ Uses same host/port as the page (works with ngrok single tunnel)
-// WebSocket goes through Vite proxy at /ws path
 const getWsUrl = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const host = window.location.host  // includes port if any
+  const host = window.location.host
   return `${protocol}//${host}/ws`
 }
 
@@ -15,15 +13,24 @@ export const useSocket = (role) => {
   const [partnerOnline,       setPartnerOnline]       = useState(false)
   const [lastDelivered,       setLastDelivered]       = useState(null)
   const [partnerOfflineAlert, setPartnerOfflineAlert] = useState(false)
+  const [partnerPublicKey,    setPartnerPublicKey]    = useState(null) // ✨ مفتاح الشريك
 
-  const connect = useCallback(() => {
+  const connect = useCallback((myPublicKeyPEM) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     setStatus('connecting')
     const ws = new WebSocket(`${getWsUrl()}?role=${role}`)
     wsRef.current = ws
 
-    ws.onopen  = () => { setStatus('connected'); setPartnerOfflineAlert(false) }
+    ws.onopen = () => {
+      setStatus('connected')
+      setPartnerOfflineAlert(false)
+      // أرسل مفتاحك العام فور الاتصال
+      if (myPublicKeyPEM) {
+        ws.send(JSON.stringify({ type: 'PUBLIC_KEY', key: myPublicKeyPEM }))
+      }
+    }
+
     ws.onclose = () => { setStatus('disconnected'); setPartnerOnline(false) }
     ws.onerror = () => setStatus('error')
 
@@ -46,6 +53,9 @@ export const useSocket = (role) => {
           case 'DELIVERED':
             setLastDelivered(msg.timestamp)
             break
+          case 'PARTNER_PUBLIC_KEY': // ✨ استقبل مفتاح الشريك
+            setPartnerPublicKey(msg.key)
+            break
           default:
             break
         }
@@ -63,6 +73,12 @@ export const useSocket = (role) => {
     return false
   }, [])
 
+  const sendPublicKey = useCallback((pem) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'PUBLIC_KEY', key: pem }))
+    }
+  }, [])
+
   const clearPacket = useCallback(() => setReceivedPacket(null), [])
 
   useEffect(() => () => wsRef.current?.close(), [])
@@ -74,9 +90,11 @@ export const useSocket = (role) => {
     partnerOfflineAlert,
     lastDelivered,
     receivedPacket,
+    partnerPublicKey,
     connect,
     disconnect,
     sendPacket,
+    sendPublicKey,
     clearPacket,
   }
 }
