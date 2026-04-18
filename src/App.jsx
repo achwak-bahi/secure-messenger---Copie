@@ -151,6 +151,11 @@ export default function App() {
 
   const socket = useSocket(role)
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-role', role)
+    return () => document.documentElement.removeAttribute('data-role')
+  }, [role])
+
   const handleRoleSwitch = () => {
     socket.disconnect()
     setRole(r => r === 'alice' ? 'bob' : 'alice')
