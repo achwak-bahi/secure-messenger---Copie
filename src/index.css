@@ -85,6 +85,46 @@ body {
     font-family: 'Inter', sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+    transition: background 0.6s ease;
+}
+
+
+/* ─── Role-based background tint ─────────────────────── */
+
+[data-role="alice"] body {
+    background: #03070d;
+}
+
+[data-role="alice"] #root::after {
+    background:
+        radial-gradient(ellipse 80% 50% at 20% 20%, rgba(0, 212, 255, 0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(0, 180, 255, 0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 60% at 50% 100%, rgba(0, 255, 200, 0.05) 0%, transparent 50%);
+}
+
+[data-role="bob"] body {
+    background: #05030d;
+}
+
+[data-role="bob"] #root::after {
+    background:
+        radial-gradient(ellipse 80% 50% at 20% 20%, rgba(139, 92, 246, 0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(167, 139, 250, 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 60% at 50% 100%, rgba(109, 40, 217, 0.05) 0%, transparent 50%);
+}
+
+[data-role="alice"] #root::before {
+    background-image:
+        linear-gradient(rgba(0, 212, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.04) 1px, transparent 1px);
+    background-size: 50px 50px;
+}
+
+[data-role="bob"] #root::before {
+    background-image:
+        linear-gradient(rgba(139, 92, 246, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(139, 92, 246, 0.04) 1px, transparent 1px);
+    background-size: 50px 50px;
 }
 
 
@@ -97,6 +137,16 @@ body {
 
 ::-webkit-scrollbar-track {
     background: transparent;
+}
+
+[data-role="alice"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(var(--cyan), #0099cc);
+    border-radius: 99px;
+}
+
+[data-role="bob"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(var(--violet), #5b21b6);
+    border-radius: 99px;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -116,6 +166,7 @@ body {
     animation: gridMove 20s linear infinite;
     pointer-events: none;
     z-index: 0;
+    transition: background-image 0.6s ease;
 }
 
 #root::after {
@@ -125,6 +176,7 @@ body {
     background: radial-gradient(ellipse 80% 50% at 20% 20%, rgba(0, 212, 255, 0.06) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139, 92, 246, 0.07) 0%, transparent 60%), radial-gradient(ellipse 40% 60% at 50% 100%, rgba(0, 255, 136, 0.04) 0%, transparent 50%);
     pointer-events: none;
     z-index: 0;
+    transition: background 0.6s ease;
 }
 
 @keyframes gridMove {
@@ -483,7 +535,7 @@ body {
 .chip-yellow {
     color: #fbbf24;
     border-color: rgba(251, 191, 36, 0.25);
-    background: rgba(251, 191, 36, 0.06);
+    background: rgba(251, 36, 36, 0.06);
 }
 
 .chip-gray {
